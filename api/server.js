@@ -19,7 +19,14 @@ app.use(express.json());
 app.use(cookieParser());
 app.use('/uploads', express.static(__dirname + '/uploads'));
 
-mongoose.connect('mongodb+srv://manasakondoju181:BWX8lfBlCCgmuL7t@cluster0.6yliz.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0');
+mongoose.connect('mongodb+srv://manasakondoju181:BWX8lfBlCCgmuL7t@cluster0.6yliz.mongodb.net/<yourDatabaseName>?retryWrites=true&w=majority&ssl=true')
+  .then(() => {
+    console.log("Connected to MongoDB successfully");
+  })
+  .catch(err => {
+    console.log("MongoDB connection error:", err);
+  });
+
 
 app.post('/register', async (req,res) => {
   const {username,password} = req.body;
