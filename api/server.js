@@ -134,7 +134,6 @@ app.get('/post/:id', async (req, res) => {
   res.json(postDoc);
 })
 
-app.listen(5000,()=>console.log('server is running'));
-
-
-//BWX8lfBlCCgmuL7t
+app.listen(5000,()=>{
+  console.log("server running");
+});
