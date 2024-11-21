@@ -35,28 +35,50 @@ app.post('/register', async (req,res) => {
   }
 });
 
-app.post('/login', async (req,res) => {
-  const {username,password} = req.body;
-  const userDoc = await User.findOne({username});
-  const passOk = bcrypt.compareSync(password, userDoc.password);
-  if (passOk) {
-    // logged in
-    jwt.sign({username,id:userDoc._id}, secret, {}, (err,token) => {
-      if (err) throw err;
-      res.cookie('token', token).json({
-        id:userDoc._id,
+app.post('/login', async (req, res) => {
+  const { username, password } = req.body;
+  
+  try {
+    // Check if the user exists in the database
+    const userDoc = await User.findOne({ username });
+    if (!userDoc) {
+      return res.status(400).json('User not found');
+    }
+
+    // Compare the password with the hashed password in the database
+    const passOk = await bcrypt.compare(password, userDoc.password); // Using async compare
+    if (!passOk) {
+      return res.status(400).json('Wrong credentials');
+    }
+
+    // Generate the JWT token and send the response
+    jwt.sign({ username, id: userDoc._id }, secret, {}, (err, token) => {
+      if (err) {
+        return res.status(500).json('Internal server error');
+      }
+      res.cookie('token', token, { httpOnly: true }).json({
+        id: userDoc._id,
         username,
       });
     });
-  } else {
-    res.status(400).json('wrong credentials');
+  } catch (err) {
+    console.error(err);
+    res.status(500).json('Internal server error');
   }
 });
 
+
 app.get('/profile', (req,res) => {
   const {token} = req.cookies;
+
+  if (!token) {
+    return res.status(401).json({ message: 'Token not provided. Please log in.' });
+  }
+  
   jwt.verify(token, secret, {}, (err,info) => {
-    if (err) throw err;
+    if (err) {
+      return res.status(403).json({ message: 'Invalid or expired token. Please log in again.' });
+    }
     res.json(info);
   });
 });
@@ -88,36 +110,52 @@ app.post('/post', uploadMiddleware.single('file'), async (req,res) => {
 
 });
 
-app.put('/post',uploadMiddleware.single('file'), async (req,res) => {
+app.put('/post', uploadMiddleware.single('file'), async (req, res) => {
   let newPath = null;
   if (req.file) {
-    const {originalname,path} = req.file;
+    const { originalname, path } = req.file;
     const parts = originalname.split('.');
     const ext = parts[parts.length - 1];
-    newPath = path+'.'+ext;
+    newPath = path + '.' + ext;
     fs.renameSync(path, newPath);
   }
 
-  const {token} = req.cookies;
-  jwt.verify(token, secret, {}, async (err,info) => {
+  const { token } = req.cookies;
+  jwt.verify(token, secret, {}, async (err, info) => {
     if (err) throw err;
-    const {id,title,summary,content} = req.body;
-    const postDoc = await Post.findById(id);
-    const isAuthor = JSON.stringify(postDoc.author) === JSON.stringify(info.id);
-    if (!isAuthor) {
-      return res.status(400).json('you are not the author');
+    const { id, title, summary, content } = req.body;
+
+    try {
+      const postDoc = await Post.findById(id);
+
+      if (!postDoc) {
+        return res.status(404).json({ message: 'Post not found' });
+      }
+
+      const isAuthor = JSON.stringify(postDoc.author) === JSON.stringify(info.id);
+      if (!isAuthor) {
+        return res.status(403).json({ message: 'You are not the author' });
+      }
+
+      // Update the document fields
+      postDoc.title = title;
+      postDoc.summary = summary;
+      postDoc.content = content;
+      if (newPath) {
+        postDoc.cover = newPath;
+      }
+
+      // Save the updated document
+      await postDoc.save();
+
+      res.json(postDoc);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: 'An error occurred while updating the post' });
     }
-    await postDoc.update({
-      title,
-      summary,
-      content,
-      cover: newPath ? newPath : postDoc.cover,
-    });
-
-    res.json(postDoc);
   });
-
 });
+
 
 app.get('/post', async (req,res) => {
   res.json(
